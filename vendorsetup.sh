@@ -6,23 +6,15 @@ release() {
         return 1
     fi
 
-    echo "[INFO] Generating PixelOS OTA JSON for device: ${device}"
+    echo "[INFO] Releasing PixelOS for device: ${device}"
 
     local top="${ANDROID_BUILD_TOP}"
     local out_dir="${top}/out/target/product/${device}"
-    local ota_dir="${top}/vendor/extra/ota"
-    local ota_device_dir="${ota_dir}/${device}"
-    local json_path="${ota_device_dir}/${device}.json"
 
     if [ ! -d "${out_dir}" ]; then
         echo "[ERROR] Output dir not found: ${out_dir}"
         return 1
     fi
-
-    rm -rf "${ota_dir}"
-    git clone https://github.com/WKCW-Project/ota.git "${ota_dir}" || return 1
-    cd "${ota_dir}" || return 1
-    git checkout main 2>/dev/null || git checkout master
 
     local ota
     ota="$(printf "%s\n" "${out_dir}/PixelOS_${device}-"*.zip | sort | tail -n1)"
@@ -37,8 +29,32 @@ release() {
 
     echo "[INFO] Using ZIP: ${filename}"
 
-    local build_props="${out_dir}/system/build.prop"
+    local SF_USER="ramaadni"
+    local SF_PROJECT="rmdn-stuff"
+    local SF_PATH="/home/frs/project/${SF_PROJECT}/${device}/pixelos"
 
+    echo "[INFO] Uploading ZIP to SourceForge..."
+    rsync -avP \
+        "${ota}" \
+        "${SF_USER}@frs.sourceforge.net:${SF_PATH}/${filename}" || {
+            echo "[ERROR] Upload failed"
+            return 1
+        }
+
+    echo "[DONE] Upload success"
+
+    echo "[INFO] Generating OTA JSON..."
+
+    local ota_dir="${top}/vendor/extra/ota"
+    local ota_device_dir="${ota_dir}/${device}"
+    local json_path="${ota_device_dir}/${device}.json"
+
+    rm -rf "${ota_dir}"
+    git clone https://github.com/WKCW-Project/ota.git "${ota_dir}" || return 1
+    cd "${ota_dir}" || return 1
+    git checkout main 2>/dev/null || git checkout master
+
+    local build_props="${out_dir}/system/build.prop"
     if [ ! -f "${build_props}" ]; then
         echo "[ERROR] build.prop not found"
         return 1
@@ -46,7 +62,6 @@ release() {
 
     local datetime
     datetime="$(grep -oP '(?<=^ro.build.date.utc=).*' "${build_props}")"
-
     if [ -z "${datetime}" ]; then
         echo "[ERROR] ro.build.date.utc not found"
         return 1
@@ -67,7 +82,7 @@ release() {
     local version
     version="$(echo "${filename}" | grep -oP '(?<=PixelOS_'"${device}"'-)\d+')"
 
-    local url="https://sourceforge.net/projects/rmdn-stuff/files/${device^}/PixelOS/${filename}/download"
+    local url="https://sourceforge.net/projects/rmdn-stuff/files/${device}/pixelos/${filename}/download"
 
     mkdir -p "${ota_device_dir}"
 
@@ -94,8 +109,8 @@ release() {
         }' > "${json_path}"
 
     echo
-    echo "[DONE] OTA JSON generated successfully"
-    echo " Path : ${json_path}"
+    echo "[DONE] Release completed successfully"
+    echo " JSON : ${json_path}"
     echo
 
     git status --short
